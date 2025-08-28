@@ -17,11 +17,9 @@ def my_hook(d):
         elif 'info_dict' in d and 'filepath' in d['info_dict']:
             downloaded_filepaths.append(d['info_dict']['filepath'])
 
-url = input("다운로드할 YouTube URL을 입력하세요: ")
-
 ydl_opts = {
     'format': 'bv+ba/best',
-    'ffmpeg_location': r'C:\Users\hangy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0-full_build\bin\ffmpeg.exe',
+    'ffmpeg_location': r'C:\Users\hangy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.WinGet.Source_8wekyb3d8bbwe\ffmpeg-8.0-full_build\bin\ffmpeg.exe',
     'concurrent_fragment_downloads': 16,
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -40,42 +38,70 @@ ydl_opts = {
     # 'writethumbnail': True,       # 썸네일 자동 저장
     'outtmpl': 'videos/%(title)s/%(title)s [%(id)s].%(ext)s', # 영상 제목 기반의 하위 폴더에 저장
     'overwrites': False,           # 이미 받을 때는 실패 방지용
-    'sleep_interval_requests': 5,  # 매 요청마다 5초 대기
+    # 'sleep_interval_requests': 5,  # 매 요청마다 5초 대기
     # 'writeinfojson': False,   # 영상 정보 JSON으로 남기기(실무 분석) - 비활성화
     # 'verbose': True,             # 상세 로그(디버그 필요시)
     'progress_hooks': [my_hook],  # 다운로드 진행 상황 표시를 위한 훅 활성화
 
 }
 
-start_time = time.time()
+while True: # 연속 다운로드를 위한 루프 시작
+    url = input("다운로드할 YouTube URL을 입력하세요 (종료하려면 'q' 또는 'quit' 입력): ")
+    if url.lower() in ['q', 'quit']:
+        print("스크립트를 종료합니다.")
+        break
 
-with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    ydl.download([url])
+    downloaded_filepaths.clear() # 다음 다운로드를 위해 리스트 초기화
 
-end_time = time.time()
-total_time = end_time - start_time
-print(f"총 다운로드 소요 시간: {total_time:.2f}초")
+    start_time = time.time()
 
-# 자막 텍스트 파싱 및 저장 로직
-if downloaded_filepaths:
-    # 다운로드된 파일들 중 .ko.vtt 파일 찾기
-    vtt_filepath = None
-    for fpath in downloaded_filepaths:
-        if fpath.endswith('.ko.vtt'):
-            vtt_filepath = fpath
-            break
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+    except Exception as e:
+        print(f"다운로드 중 오류 발생: {e}")
+        continue # 오류 발생 시 다음 URL 입력으로 넘어감
 
-    if vtt_filepath and (ydl_opts.get('writesubtitles') or ydl_opts.get('writeautomaticsub')):
-        print(f"다운로드된 자막 파일 발견: {vtt_filepath}")
-        try:
-            parsed_text = subtitle_parser.parse_vtt_to_text(vtt_filepath)
-            output_text_file = vtt_filepath.replace('.ko.vtt', '.ko.txt')
-            with open(output_text_file, 'w', encoding='utf-8') as f:
-                f.write(parsed_text)
-            print(f"자막 텍스트가 다음 파일에 저장되었습니다: {output_text_file}")
-        except Exception as e:
-            print(f"자막 파싱 중 오류 발생: {e}")
+    end_time = time.time()
+    total_time = end_time - start_time
+    print(f"총 다운로드 소요 시간: {total_time:.2f}초")
+
+    # 자막 텍스트 파싱 및 저장 로직
+    if downloaded_filepaths:
+        # 다운로드된 파일들 중 .ko.vtt 파일 찾기 (가장 최근에 다운로드된 파일의 디렉토리에서)
+        first_downloaded_file = downloaded_filepaths[0]
+        download_dir = os.path.dirname(first_downloaded_file) # 첫 번째 다운로드 파일의 디렉토리
+        
+        vtt_files = glob.glob(os.path.join(download_dir, '*.ko.vtt'))
+        
+        vtt_filepath = None
+        if vtt_files:
+            # 여러 자막 파일 중 가장 최근 수정된 파일 선택 (혹시 모를 경우 대비)
+            vtt_filepath = max(vtt_files, key=os.path.getmtime)
+
+
+        if vtt_filepath and (ydl_opts.get('writesubtitles') or ydl_opts.get('writeautomaticsub')):
+            print(f"다운로드된 자막 파일 발견: {vtt_filepath}")
+            try:
+                parsed_text = subtitle_parser.parse_vtt_to_text(vtt_filepath)
+                output_text_file = vtt_filepath.replace('.ko.vtt', '.ko.txt')
+                with open(output_text_file, 'w', encoding='utf-8') as f:
+                    f.write(parsed_text)
+                print(f"자막 텍스트가 다음 파일에 저장되었습니다: {output_text_file}")
+            except Exception as e:
+                print(f"자막 파싱 중 오류 발생: {e}")
+        else:
+            print("한글 자막 파일(.ko.vtt)을 찾을 수 없습니다 (자막 다운로드 옵션이 활성화되었는지 확인). ")
     else:
-        print("한글 자막 파일(.ko.vtt)을 찾을 수 없습니다 (자막 다운로드 옵션이 활성화되었는지 확인).")
-else:
-    print("다운로드된 파일 경로를 찾을 수 없습니다.")
+        print("다운로드된 파일 경로를 찾을 수 없습니다.")
+
+    # 다운로드된 영상 디렉토리 열기 (Windows 전용)
+    if downloaded_filepaths:
+        target_dir = os.path.dirname(downloaded_filepaths[0])
+        print(f"다운로드 디렉토리 열기: {target_dir}")
+        try:
+            os.startfile(target_dir) # Windows에서 폴더 열기
+        except AttributeError:
+            print("경고: os.startfile은 Windows 전용입니다. 다른 OS에서는 수동으로 폴더를 열어야 합니다.")
+        except Exception as e:
+            print(f"디렉토리를 여는 중 오류 발생: {e}")
