@@ -3,6 +3,7 @@ import time
 import os
 import glob
 import subtitle_parser
+import comment_collector
 
 # 다운로드된 파일 경로를 저장할 리스트
 downloaded_filepaths = []
@@ -52,55 +53,80 @@ while True: # 연속 다운로드를 위한 루프 시작
         break
 
     downloaded_filepaths.clear() # 다음 다운로드를 위해 리스트 초기화
-
+    
     start_time = time.time()
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=False) # 다운로드 전에 정보 추출
             ydl.download([url])
+
+            # 자막 파일 경로 결정 로직
+            vtt_filepath = None
+            download_dir = None
+
+            if downloaded_filepaths:
+                # 비디오가 실제로 다운로드된 경우, 해당 디렉토리를 사용
+                first_downloaded_file = downloaded_filepaths[0]
+                download_dir = os.path.dirname(first_downloaded_file)
+            else:
+                # 비디오가 이미 존재하여 downloaded_filepaths가 비어있는 경우,
+                # info_dict와 outtmpl을 사용하여 예상 자막 경로를 생성
+                if info_dict and (ydl_opts.get('writesubtitles') or ydl_opts.get('writeautomaticsub')):
+                    subtitle_info = info_dict.copy()
+                    if ydl_opts.get('subtitleslangs') and 'ko' in ydl_opts['subtitleslangs']:
+                        subtitle_info['ext'] = 'ko.vtt'
+                        # 예상되는 전체 자막 파일 경로 생성
+                        predicted_vtt_filepath = ydl.prepare_filename(subtitle_info, outtmpl=ydl_opts['outtmpl'])
+                        download_dir = os.path.dirname(predicted_vtt_filepath)
+            
+            if download_dir:
+                # 해당 디렉토리에서 .ko.vtt 파일 찾기 (glob 사용)
+                vtt_files = glob.glob(os.path.join(download_dir, '*.ko.vtt'))
+                if vtt_files:
+                    vtt_filepath = max(vtt_files, key=os.path.getmtime)
+
+            # 자막 텍스트 파싱 및 저장 로직
+            if vtt_filepath and os.path.exists(vtt_filepath):
+                print(f"다운로드된 자막 파일 발견: {vtt_filepath}")
+                try:
+                    parsed_text = subtitle_parser.parse_vtt_to_text(vtt_filepath)
+                    output_text_file = vtt_filepath.replace('.ko.vtt', '.ko.txt')
+                    with open(output_text_file, 'w', encoding='utf-8') as f:
+                        f.write(parsed_text)
+                    print(f"자막 텍스트가 다음 파일에 저장되었습니다: {output_text_file}")
+                except Exception as e:
+                    print(f"자막 파싱 중 오류 발생: {e}")
+            else:
+                print("한글 자막 파일(.ko.vtt)을 찾을 수 없습니다 (자막 다운로드 옵션이 활성화되었는지 확인). ")
+
+            # 댓글 수집 및 저장 로직
+            if download_dir and info_dict:
+                video_id = info_dict.get('id')
+                video_title = str(info_dict.get('title', 'Unknown'))
+                print(f"비디오 ID: {video_id}, 제목: {video_title}")
+                try:
+                    comments = comment_collector.collect_youtube_comments(video_id, max_results=30)
+                    if comments:
+                        comment_collector.save_comments_to_file(comments, download_dir, video_title, video_id)
+                except Exception as e:
+                    print(f"댓글 수집 중 오류 발생: {e}")
+
     except Exception as e:
         print(f"다운로드 중 오류 발생: {e}")
-        continue # 오류 발생 시 다음 URL 입력으로 넘어감
+        pass # 다운로드 오류 발생 시 자막 처리 로직은 스킵
 
     end_time = time.time()
     total_time = end_time - start_time
     print(f"총 다운로드 소요 시간: {total_time:.2f}초")
 
-    # 자막 텍스트 파싱 및 저장 로직
-    if downloaded_filepaths:
-        # 다운로드된 파일들 중 .ko.vtt 파일 찾기 (가장 최근에 다운로드된 파일의 디렉토리에서)
-        first_downloaded_file = downloaded_filepaths[0]
-        download_dir = os.path.dirname(first_downloaded_file) # 첫 번째 다운로드 파일의 디렉토리
-        
-        vtt_files = glob.glob(os.path.join(download_dir, '*.ko.vtt'))
-        
-        vtt_filepath = None
-        if vtt_files:
-            # 여러 자막 파일 중 가장 최근 수정된 파일 선택 (혹시 모를 경우 대비)
-            vtt_filepath = max(vtt_files, key=os.path.getmtime)
-
-
-        if vtt_filepath and (ydl_opts.get('writesubtitles') or ydl_opts.get('writeautomaticsub')):
-            print(f"다운로드된 자막 파일 발견: {vtt_filepath}")
-            try:
-                parsed_text = subtitle_parser.parse_vtt_to_text(vtt_filepath)
-                output_text_file = vtt_filepath.replace('.ko.vtt', '.ko.txt')
-                with open(output_text_file, 'w', encoding='utf-8') as f:
-                    f.write(parsed_text)
-                print(f"자막 텍스트가 다음 파일에 저장되었습니다: {output_text_file}")
-            except Exception as e:
-                print(f"자막 파싱 중 오류 발생: {e}")
-        else:
-            print("한글 자막 파일(.ko.vtt)을 찾을 수 없습니다 (자막 다운로드 옵션이 활성화되었는지 확인). ")
-    else:
-        print("다운로드된 파일 경로를 찾을 수 없습니다.")
-
     # 다운로드된 영상 디렉토리 열기 (Windows 전용)
-    if downloaded_filepaths:
-        target_dir = os.path.dirname(downloaded_filepaths[0])
-        print(f"다운로드 디렉토리 열기: {target_dir}")
+    target_dir_to_open = download_dir # 이제 download_dir이 항상 설정될 것입니다.
+
+    if target_dir_to_open:
+        print(f"다운로드 디렉토리 열기: {target_dir_to_open}")
         try:
-            os.startfile(target_dir) # Windows에서 폴더 열기
+            os.startfile(target_dir_to_open) # Windows에서 폴더 열기
         except AttributeError:
             print("경고: os.startfile은 Windows 전용입니다. 다른 OS에서는 수동으로 폴더를 열어야 합니다.")
         except Exception as e:
