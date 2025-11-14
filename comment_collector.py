@@ -3,10 +3,16 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv() # .env 파일 로드
 
 # YouTube API 키를 환경변수에서 가져오기 (보안을 위해)
 # 또는 직접 설정: API_KEY = "your_api_key_here"
-API_KEY = REMOVED
+API_KEY = os.getenv('YOUTUBE_API_KEY')
+
+if not API_KEY:
+    raise ValueError("YOUTUBE_API_KEY 환경 변수가 설정되지 않았습니다.")
 
 def get_video_id_from_url(url):
     """YouTube URL에서 video ID 추출"""
