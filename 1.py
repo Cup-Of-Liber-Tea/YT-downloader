@@ -19,11 +19,11 @@ def my_hook(d):
             downloaded_filepaths.append(d['info_dict']['filepath'])
 
 ydl_opts = {
-    'format': 'bv+ba/best',
+    'format': 'best',
     'ffmpeg_location': r'C:\Users\hangy\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.WinGet.Source_8wekyb3d8bbwe\ffmpeg-8.0-full_build\bin\ffmpeg.exe',
     'concurrent_fragment_downloads': 16,
     'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
         'Referer': 'https://www.youtube.com/',
                     },
     'ratelimit': 100 * 1024 * 1024,  # 초당 100MB 이하 속도로 설정 (선택)
